@@ -458,14 +458,18 @@
 
 
 
+
 # Import necessary libraries
-import streamlit as st
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 from langchain_community.utilities import SQLDatabase
+import streamlit as st
 from langchain_community.agent_toolkits import create_sql_agent
 from langchain_groq import ChatGroq
 from langchain.agents import AgentType
 from langchain_community.llms import Ollama
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 import pandas as pd
 
 # Page Configuration
@@ -550,17 +554,20 @@ if st.session_state.db:
                     st.session_state.raw_output = result['output'] if isinstance(result, dict) else result
 
                     # Process raw output using an extraction agent
-                    extractor_llm = ChatGroq(temperature=0.7, model_name='llama-3.1-70b-versatile', api_key=st.session_state.api_key)
+                    # extractor_llm = ChatGroq(temperature=0.7, model_name='llama-3.1-70b-versatile', api_key=st.session_state.api_key)
+                    extractor_llm = LLM(model="groq/llama-3.1-70b-versatile", api_key=st.session_state.api_key)
                     extractor_agent = Agent(
                         role="Data Extractor",
                         goal="Extract merchants and emails from the raw output.",
                         backstory="You are an expert in extracting structured information from text.",
+                        provider="Groq",
                         llm=extractor_llm
                     )
 
                     extract_task = Task(
                         description=f"Extract a list of 'merchants' and their 'emails' from the following text:\n\n{st.session_state.raw_output}",
-                        agent=extractor_agent
+                        agent=extractor_agent,
+                        expected_output="A structured list of merchants and their associated email addresses extracted from the given text."
                     )
 
                     # Crew execution for extraction
@@ -581,18 +588,20 @@ if st.session_state.db:
 
     if st.session_state.extraction_results:
         st.markdown("### Extracted Merchants:", unsafe_allow_html=True)
-        st.write(st.session_state.extraction_results)
+        st.write(st.session_state.extraction_results.raw)
 
     # Email Generator Button
     if st.session_state.merchant_data and st.button("Generate Emails"):
         with st.spinner("Generating emails..."):
             try:
                 # Define email generation agent
-                llm_email = ChatGroq(temperature=0.2, model_name='llama-3.1-70b-versatile', api_key=st.session_state.api_key)
+                # llm_email = ChatGroq(temperature=0.2, model_name='llama-3.1-70b-versatile', api_key=st.session_state.api_key)
+                llm_email = LLM(model="groq/llama-3.1-70b-versatile", api_key=st.session_state.api_key)
                 email_agent = Agent(
                     role="Email Content Generator",
                     goal="Generate personalized marketing emails for merchants.",
                     backstory="You are a marketing expert named 'Sumit Uttamchandani' of Pulse iD fintech company skilled in crafting professional and engaging emails for merchants.",
+                    
                     verbose=True,
                     allow_delegation=False,
                     llm=llm_email
@@ -612,7 +621,7 @@ if st.session_state.db:
 
                 # Display results
                 st.markdown("### Generated Emails:", unsafe_allow_html=True)
-                st.write(email_results)
+                st.write(email_results.raw)
 
             except Exception as e:
                 st.error(f"Error generating emails: {str(e)}")
